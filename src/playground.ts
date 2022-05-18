@@ -26,6 +26,7 @@ export class Playground {
       [['getOrderBook'], this.getOrderBookCommandHandler, 'Get order book and print it. Arguments: symbol'],
       [['getOrders'], this.getOrdersCommandHandler, 'Get user orders. Arguments: userId, blockchainName (tez | eth)'],
       [['getOrder'], this.getOrderCommandHandler, 'Get a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
+      [['cancelOrder'], this.cancelOrderCommandHandler, 'Cancel a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
       [['printAtomexClients'], this.printAtomexClientsCommandHandler, 'Print a list of the atomex clients'],
       [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, blockchainName (tez | eth)']
@@ -135,7 +136,7 @@ export class Playground {
       return Playground.printClientNotFoundError(userId);
 
     const orders = await client.atomex.getOrders();
-    console.log(orders);
+    console.table(orders);
   };
 
   private getOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {
@@ -145,6 +146,16 @@ export class Playground {
 
     const order = await client.atomex.getOrder(orderId);
     console.log(order);
+  };
+
+  private cancelOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {
+    const client = this.getClient(userId, blockchainName);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const order = await client.atomex.getOrder(orderId);
+    const result = await client.atomex.cancelOrder(orderId, order.symbol, order.side);
+    console.log(`Result: Is the ${orderId} order canceled? ${result}`);
   };
 
   private printUsersCommandHandler = () => {
