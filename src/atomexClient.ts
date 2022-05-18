@@ -1,75 +1,64 @@
 import { InMemorySigner } from '@taquito/signer';
 import { TezosToolkit } from '@taquito/taquito';
-import { Atomex, EthereumHelpers, TezosHelpers } from 'atomex-sdk';
+import { Atomex, TezosHelpers, type Helpers as AtomexHelpers } from 'atomex-sdk';
 
 import type { AtomexAuthTokenRequest, AtomexAuthTokenResponse, AtomexOrder } from './atomexTypes';
 import type { User } from './user';
 
+export type AtomexBlockchainName = 'tez' | 'eth';
+
 export interface AtomexClientRpcUrls {
-  readonly tez: string
-}
-
-export enum AuthenticationMethod {
-  Tez = 1 << 0,
-  Eth = 1 << 1,
-
-  All = Tez | Eth
-}
-
-interface AtomexHelpers {
-  readonly tez: TezosHelpers;
-  readonly eth: EthereumHelpers;
-}
-
-interface AtomexAuthenticationRequestAndResponse {
-  readonly request: AtomexAuthTokenRequest,
-  readonly response: AtomexAuthTokenResponse
+  readonly tez: string;
+  readonly eth: string;
 }
 
 interface AtomexAuthentication {
-  tez?: AtomexAuthenticationRequestAndResponse,
-  eth?: AtomexAuthenticationRequestAndResponse
+  readonly request: AtomexAuthTokenRequest,
+  readonly response: AtomexAuthTokenResponse
 }
-
 const authenticationMessage = 'Signing in ';
 
 export class AtomexClient {
   static readonly DefaultRpcUrls: AtomexClientRpcUrls = {
-    tez: 'https://rpc.tzkt.io/hangzhounet'
+    tez: 'https://rpc.tzkt.io/hangzhounet',
+    // TODO
+    eth: ''
   };
 
-  private readonly atomex: Atomex;
-  private readonly tezosToolkit: TezosToolkit;
-  private readonly tezosInMemorySigner: InMemorySigner;
+  readonly id: string;
+  readonly atomex: Atomex;
 
-  private _tezosPublicKey: string | undefined;
-  private _tezosAddress: string | undefined;
+  private _tezosToolkit: TezosToolkit | undefined;
+  private _tezosInMemorySigner: InMemorySigner | undefined;
+  private _userPublicKey: string | undefined;
+  private _userAddress: string | undefined;
   private _atomexHelpers: AtomexHelpers | undefined;
-  private _atomexAuthentication: AtomexAuthentication = {};
+  private _atomexAuthentication: AtomexAuthentication | undefined;
 
   constructor(
     readonly user: User,
+    readonly blockchainName: AtomexBlockchainName,
     readonly network: 'mainnet' | 'testnet',
-    rpcUrls = AtomexClient.DefaultRpcUrls
+    private readonly rpcUrl = AtomexClient.DefaultRpcUrls[blockchainName]
   ) {
+    this.id = `${user.id}_${blockchainName}`;
     this.atomex = Atomex.create(network);
-    this.tezosToolkit = new TezosToolkit(rpcUrls.tez);
-    this.tezosInMemorySigner = new InMemorySigner(user.secretKeys.tez);
-    this.tezosToolkit.setSignerProvider(this.tezosInMemorySigner);
+
+    this.ensureUserHasRequiredSecretKey(user, blockchainName);
   }
 
-  get tezosPublicKey() {
-    if (!this._tezosPublicKey)
+  get userPublicKey() {
+    if (!this._userPublicKey)
       throw AtomexClient.getClientIsNotInitializedError();
 
-    return this._tezosPublicKey;
+    return this._userPublicKey;
   }
 
-  get tezosAddress() {
-    if (!this._tezosAddress)
+  get userAddress() {
+    if (!this._userAddress)
       throw AtomexClient.getClientIsNotInitializedError();
 
-    return this._tezosAddress;
+    return this._userAddress;
   }
 
   get atomexHelpers() {
@@ -79,81 +68,76 @@ export class AtomexClient {
     return this._atomexHelpers;
   }
 
-  get atomexAuthentication(): Readonly<AtomexAuthentication> {
+  get atomexAuthentication(): AtomexAuthentication | undefined {
     return this._atomexAuthentication;
   }
 
+  private get tezosToolkit() {
+    if (!this._tezosToolkit)
+      throw AtomexClient.getAnotherBlockchainError(this.blockchainName, 'tez');
+
+    return this._tezosToolkit;
+  }
+
+  private get tezosInMemorySigner() {
+    if (!this._tezosInMemorySigner)
+      throw AtomexClient.getAnotherBlockchainError(this.blockchainName, 'tez');
+
+    return this._tezosInMemorySigner;
+  }
+
   async initialize() {
+    switch (this.blockchainName) {
+      case 'tez':
+        return this.initializeTezosToolkit();
+      case 'eth':
+        return this.initializeEthereumToolkit();
+      default:
+        throw new Error(`Unknown blockchain: ${this.blockchainName}`);
+    }
+  }
+
+  async authenticate() {
+    switch (this.blockchainName) {
+      case 'tez':
+        return this.authenticateTezos();
+      case 'eth':
+        return this.authenticateEthereum();
+      default:
+        throw new Error(`Unknown blockchain: ${this.blockchainName}`);
+    }
+  }
+
+  private async initializeTezosToolkit() {
+    this._tezosToolkit = new TezosToolkit(this.rpcUrl);
+    this._tezosInMemorySigner = new InMemorySigner(this.user.secretKeys.tez);
+    this._tezosToolkit.setSignerProvider(this.tezosInMemorySigner);
+
     const results = await Promise.all([
       this.tezosInMemorySigner.publicKey(),
       this.tezosInMemorySigner.publicKeyHash(),
       TezosHelpers.create(this.network),
-      EthereumHelpers.create(this.network)
     ]);
 
-    this._tezosPublicKey = results[0];
-    this._tezosAddress = results[1];
-    this._atomexHelpers = {
-      tez: results[2],
-      eth: results[3]
-    };
+    this._userPublicKey = results[0];
+    this._userAddress = results[1];
+    this._atomexHelpers = results[2];
   }
 
-  async authenticate(authMethod: AuthenticationMethod) {
-    const requests = authMethod & AuthenticationMethod.Tez ? [this.authenticateTez()] : [];
-
-    if (authMethod & AuthenticationMethod.Eth)
-      requests.push(this.authenticateEth());
-
-    if (!requests.length)
-      throw new Error('Authentication methods is not specified');
-
-    await Promise.all(requests);
+  private async initializeEthereumToolkit() {
+    // TODO
+    this._userPublicKey = 'dummy';
+    this._userAddress = 'dummy';
+    this._atomexHelpers = undefined;
   }
 
-  async getOrders() {
-    const orders: AtomexOrder[] = [];
-
-    if (this.atomexAuthentication.tez) {
-      this.atomex.setAuthToken(this.atomexAuthentication.tez.response.token);
-      orders.push(...await this.atomex.getOrders());
-      this.atomex.setAuthToken('');
-    }
-
-    if (this.atomexAuthentication.eth) {
-      this.atomex.setAuthToken(this.atomexAuthentication.eth.response.token);
-      orders.push(...await this.atomex.getOrders());
-      this.atomex.setAuthToken('');
-    }
-
-    return orders;
-  }
-
-  async getOrder(orderId: string) {
-    let order: AtomexOrder | undefined;
-
-    if (this.atomexAuthentication.tez) {
-      this.atomex.setAuthToken(this.atomexAuthentication.tez.response.token);
-      order = await this.atomex.getOrder(orderId);
-      this.atomex.setAuthToken('');
-    }
-
-    if (this.atomexAuthentication.eth) {
-      this.atomex.setAuthToken(this.atomexAuthentication.eth.response.token);
-      order = await this.atomex.getOrder(orderId);
-      this.atomex.setAuthToken('');
-    }
-
-    return order;
-  }
-
-  private async authenticateTez() {
-    const message = this.atomexHelpers.tez.getAuthMessage(authenticationMessage, this.tezosAddress);
+  private async authenticateTezos() {
+    const message = this.atomexHelpers.getAuthMessage(authenticationMessage, this.userAddress);
     const bytes = Buffer.from(message.msgToSign, 'utf8').toString('hex');
     const signature = await this.tezosInMemorySigner.sign(bytes);
 
-    const encodedSignature = this.atomexHelpers.tez.encodeSignature(signature.prefixSig);
-    const encodedPublicKey = this.atomexHelpers.tez.encodePublicKey(this.tezosPublicKey);
+    const encodedSignature = this.atomexHelpers.encodeSignature(signature.prefixSig);
+    const encodedPublicKey = this.atomexHelpers.encodePublicKey(this.userPublicKey);
 
     const authRequest: AtomexAuthTokenRequest = {
       timeStamp: message.timestamp,
@@ -164,14 +148,24 @@ export class AtomexClient {
       signature: encodedSignature
     };
 
-    this._atomexAuthentication.tez = {
+    this._atomexAuthentication = {
       request: authRequest,
       response: await this.atomex.getAuthToken(authRequest)
     };
+    this.atomex.setAuthToken(this._atomexAuthentication.response.token);
   }
 
-  private async authenticateEth() {
+  private async authenticateEthereum() {
     throw new Error('Not implemented');
+  }
+
+  private ensureUserHasRequiredSecretKey(user: User, blockchainName: AtomexBlockchainName) {
+    if (!user.secretKeys[blockchainName])
+      throw new Error(`The "${user.name} [${user.id}]" user has no required secret key for the "${blockchainName}" blockchain`);
+  }
+
+  private static getAnotherBlockchainError(currentBlockchainName: AtomexBlockchainName, expectedBlockchainName: AtomexBlockchainName) {
+    return new Error(`The current blockchain is ${currentBlockchainName}. Expected is ${expectedBlockchainName}`);
   }
 
   private static getClientIsNotInitializedError() {

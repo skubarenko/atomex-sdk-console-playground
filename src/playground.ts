@@ -2,7 +2,7 @@ import readline, { Interface as ReadlineInterface } from 'node:readline';
 
 import { Atomex } from 'atomex-sdk';
 
-import { AtomexClient, AuthenticationMethod } from './atomexClient.js';
+import { AtomexBlockchainName, AtomexClient } from './atomexClient.js';
 import { printOrderBook } from './print.js';
 import type { User } from './user.js';
 
@@ -23,11 +23,12 @@ export class Playground {
     this.commands = [
       [['h', 'help'], this.helpCommandHandler, 'Help'],
       [['exit'], this.exitCommandHandler, 'Exiting the program'],
-      [['fetchOrderBook'], this.fetchOrderBookCommandHandler, 'Fetch order book and print it. Arguments: symbol'],
-      [['fetchOrders'], this.fetchOrdersCommandHandler, 'Fetch user orders. Arguments: userId'],
-      [['fetchOrder'], this.fetchOrderCommandHandler, 'Fetch a user order. Arguments: userId, orderId'],
+      [['getOrderBook'], this.getOrderBookCommandHandler, 'Get order book and print it. Arguments: symbol'],
+      [['getOrders'], this.getOrdersCommandHandler, 'Get user orders. Arguments: userId, blockchainName (tez | eth)'],
+      [['getOrder'], this.getOrderCommandHandler, 'Get a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
-      [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, authenticationMethod (Tez | Eth | All)']
+      [['printAtomexClients'], this.printAtomexClientsCommandHandler, 'Print a list of the atomex clients'],
+      [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, blockchainName (tez | eth)']
     ];
 
     this.rl = readline.createInterface({
@@ -57,7 +58,7 @@ export class Playground {
 
     this.attachEvents();
     this._anonymousAtomex = Atomex.create(this.network);
-    this.createAtomexClients();
+    await this.createAtomexClients();
 
     this.waitForNewCommand();
   }
@@ -98,51 +99,65 @@ export class Playground {
     const initializationPromises: Array<Promise<void>> = [];
 
     for (const [_, user] of this.users) {
-      const atomexClient = new AtomexClient(user, this.network);
-      this._atomexClients.set(user.id, atomexClient);
-      initializationPromises.push(atomexClient.initialize());
+      for (const blockchainName of Object.keys(user.secretKeys) as AtomexBlockchainName[]) {
+        const atomexClient = new AtomexClient(user, blockchainName, this.network);
+        this._atomexClients.set(atomexClient.id, atomexClient);
+        initializationPromises.push(atomexClient.initialize());
+      }
     }
 
     await Promise.all(initializationPromises);
   }
 
-  private authenticateUserCommandHandler = async (userId: User['id'], rawAuthMethod: keyof typeof AuthenticationMethod) => {
-    const authMethod = AuthenticationMethod[rawAuthMethod];
-    const client = this.atomexClients.get(userId);
+  private getClient(userId: User['id'], blockchainName: AtomexBlockchainName) {
+    return this.atomexClients.get(`${userId}_${blockchainName}`);
+  }
+
+  private authenticateUserCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
+    const client = this.getClient(userId, blockchainName);
     if (!client)
       return Playground.printClientNotFoundError(userId);
 
-    await client.authenticate(authMethod);
+    await client.authenticate();
     console.log(`The ${client.user.name} [${client.user.id}] user is authenticated`);
     console.log('AuthData', client.atomexAuthentication);
   };
 
-  private fetchOrderBookCommandHandler = async (symbol: string) => {
+  private getOrderBookCommandHandler = async (symbol: string) => {
     const orderBook = await this.anonymousAtomex.getOrderBook(symbol);
 
     printOrderBook(orderBook);
   };
 
-  private fetchOrdersCommandHandler = async (userId: User['id']) => {
-    const client = this.atomexClients.get(userId);
+  private getOrdersCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
+    const client = this.getClient(userId, blockchainName);
     if (!client)
       return Playground.printClientNotFoundError(userId);
 
-    const orders = await client.getOrders();
+    const orders = await client.atomex.getOrders();
     console.log(orders);
   };
 
-  private fetchOrderCommandHandler = async (userId: User['id'], orderId: string) => {
-    const client = this.atomexClients.get(userId);
+  private getOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {
+    const client = this.getClient(userId, blockchainName);
     if (!client)
       return Playground.printClientNotFoundError(userId);
 
-    const order = await client.getOrder(orderId);
+    const order = await client.atomex.getOrder(orderId);
     console.log(order);
   };
 
   private printUsersCommandHandler = () => {
     console.log(this.users);
+  };
+
+  private printAtomexClientsCommandHandler = () => {
+    console.table([...this.atomexClients.values()].map(client => ({
+      'id': client.id,
+      'userId': client.user.id,
+      'blockchainName': client.blockchainName,
+      'user.address': client.userAddress
+    })));
   };
 
   private helpCommandHandler = () => {
