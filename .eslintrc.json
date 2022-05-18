@@ -41,6 +41,7 @@
     "no-await-in-loop": "error",
     "no-duplicate-imports": "error",
     "no-var": "error",
+    "no-debugger": "off",
     "object-shorthand": "warn",
     "prefer-arrow-callback": "warn",
     "prefer-const": "error",
