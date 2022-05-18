@@ -24,6 +24,8 @@ export class Playground {
       [['h', 'help'], this.helpCommandHandler, 'Help'],
       [['exit'], this.exitCommandHandler, 'Exiting the program'],
       [['fetchOrderBook'], this.fetchOrderBookCommandHandler, 'Fetch order book and print it. Arguments: symbol'],
+      [['fetchOrders'], this.fetchOrdersCommandHandler, 'Fetch user orders. Arguments: userId'],
+      [['fetchOrder'], this.fetchOrderCommandHandler, 'Fetch a user order. Arguments: userId, orderId'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
       [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, authenticationMethod (Tez | Eth | All)']
     ];
@@ -108,7 +110,7 @@ export class Playground {
     const authMethod = AuthenticationMethod[rawAuthMethod];
     const client = this.atomexClients.get(userId);
     if (!client)
-      return Playground.printCommandError('Client not found');
+      return Playground.printClientNotFoundError(userId);
 
     await client.authenticate(authMethod);
     console.log(`The ${client.user.name} [${client.user.id}] user is authenticated`);
@@ -119,6 +121,24 @@ export class Playground {
     const orderBook = await this.anonymousAtomex.getOrderBook(symbol);
 
     printOrderBook(orderBook);
+  };
+
+  private fetchOrdersCommandHandler = async (userId: User['id']) => {
+    const client = this.atomexClients.get(userId);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const orders = await client.getOrders();
+    console.log(orders);
+  };
+
+  private fetchOrderCommandHandler = async (userId: User['id'], orderId: string) => {
+    const client = this.atomexClients.get(userId);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const order = await client.getOrder(orderId);
+    console.log(order);
   };
 
   private printUsersCommandHandler = () => {
@@ -136,6 +156,10 @@ export class Playground {
   private exitCommandHandler = () => {
     this.exit();
   };
+
+  private static printClientNotFoundError(id: string) {
+    Playground.printCommandError(`Client not found by the ${id} id`);
+  }
 
   private static printCommandError(message: string) {
     console.error(message);

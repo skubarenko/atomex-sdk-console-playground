@@ -2,7 +2,7 @@ import { InMemorySigner } from '@taquito/signer';
 import { TezosToolkit } from '@taquito/taquito';
 import { Atomex, EthereumHelpers, TezosHelpers } from 'atomex-sdk';
 
-import type { AtomexAuthTokenRequest, AtomexAuthTokenResponse } from './atomexTypes';
+import type { AtomexAuthTokenRequest, AtomexAuthTokenResponse, AtomexOrder } from './atomexTypes';
 import type { User } from './user';
 
 export interface AtomexClientRpcUrls {
@@ -109,6 +109,42 @@ export class AtomexClient {
       throw new Error('Authentication methods is not specified');
 
     await Promise.all(requests);
+  }
+
+  async getOrders() {
+    const orders: AtomexOrder[] = [];
+
+    if (this.atomexAuthentication.tez) {
+      this.atomex.setAuthToken(this.atomexAuthentication.tez.response.token);
+      orders.push(...await this.atomex.getOrders());
+      this.atomex.setAuthToken('');
+    }
+
+    if (this.atomexAuthentication.eth) {
+      this.atomex.setAuthToken(this.atomexAuthentication.eth.response.token);
+      orders.push(...await this.atomex.getOrders());
+      this.atomex.setAuthToken('');
+    }
+
+    return orders;
+  }
+
+  async getOrder(orderId: string) {
+    let order: AtomexOrder | undefined;
+
+    if (this.atomexAuthentication.tez) {
+      this.atomex.setAuthToken(this.atomexAuthentication.tez.response.token);
+      order = await this.atomex.getOrder(orderId);
+      this.atomex.setAuthToken('');
+    }
+
+    if (this.atomexAuthentication.eth) {
+      this.atomex.setAuthToken(this.atomexAuthentication.eth.response.token);
+      order = await this.atomex.getOrder(orderId);
+      this.atomex.setAuthToken('');
+    }
+
+    return order;
   }
 
   private async authenticateTez() {
