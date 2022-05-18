@@ -9,8 +9,11 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@taquito/signer": "^12.1.1",
+    "@taquito/taquito": "^12.1.1",
     "atomex-sdk": "file:../atomex-sdk",
-    "dotenv": "^16.0.1"
+    "dotenv": "^16.0.1",
+    "web3": "^1.7.3"
   },
   "devDependencies": {
     "@types/node": "^17.0.34",
