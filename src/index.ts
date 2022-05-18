@@ -10,7 +10,8 @@ const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.
 config({ path: envPath });
 
 const network = 'testnet';
-const users = new Map<User['id'], User>(['mm0', 'client0'].map(userId => {
+const userIds = ['mm0', 'client0'] as const;
+const users = new Map<User['id'], User>(userIds.map(userId => {
   const userIdEnvKey = userId.toUpperCase();
   return [userId, {
     id: userId,

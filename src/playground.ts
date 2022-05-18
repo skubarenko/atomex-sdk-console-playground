@@ -128,7 +128,7 @@ export class Playground {
   private helpCommandHandler = () => {
     console.log('\nAvailable commands:');
     this.commands.forEach(([commandAliases, _, commandDescription]) => {
-      console.log(' -', commandAliases.join(', '), commandDescription ? `    ${commandDescription}` : '');
+      console.log(' *', commandAliases.join(', ').padEnd(20), commandDescription ? commandDescription : '');
     });
     console.log('');
   };
