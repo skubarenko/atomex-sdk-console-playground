@@ -1,8 +1,10 @@
 import readline, { Interface as ReadlineInterface } from 'node:readline';
 
 import { Atomex } from 'atomex-sdk';
+import { nanoid } from 'nanoid';
 
 import { AtomexBlockchainName, AtomexClient } from './atomexClient.js';
+import { AtomexOrder } from './atomexTypes.js';
 import { printOrderBook } from './print.js';
 import type { User } from './user.js';
 
@@ -26,6 +28,8 @@ export class Playground {
       [['getOrderBook'], this.getOrderBookCommandHandler, 'Get order book and print it. Arguments: symbol'],
       [['getOrders'], this.getOrdersCommandHandler, 'Get user orders. Arguments: userId, blockchainName (tez | eth)'],
       [['getOrder'], this.getOrderCommandHandler, 'Get a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
+      [['createOrder'], this.createOrderCommandHandler, 'Create order. ' +
+        'Arguments: userId, blockchainName (tez | eth), symbol, price, qty, side (Buy, Sell), orderType (Return | FillOrKill | SolidFillOrKill | ImmediateOrCancel)'],
       [['cancelOrder'], this.cancelOrderCommandHandler, 'Cancel a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
       [['printAtomexClients'], this.printAtomexClientsCommandHandler, 'Print a list of the atomex clients'],
@@ -146,6 +150,31 @@ export class Playground {
 
     const order = await client.atomex.getOrder(orderId);
     console.log(order);
+  };
+
+  private createOrderCommandHandler = async (
+    userId: User['id'],
+    blockchainName: AtomexBlockchainName,
+    symbol: string,
+    price: string,
+    qty: string,
+    side: AtomexOrder['side'],
+    type: AtomexOrder['type']
+  ) => {
+    const client = this.getClient(userId, blockchainName);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const orderId = await client.createOrder({
+      clientOrderId: `${client.id}_${nanoid(7)}`,
+      symbol,
+      price: +price,
+      qty: +qty,
+      side,
+      type,
+    });
+
+    console.log(`Order ID = ${orderId}`);
   };
 
   private cancelOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {

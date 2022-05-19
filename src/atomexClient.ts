@@ -4,7 +4,7 @@ import { Atomex, EthereumHelpers, TezosHelpers, type Helpers as AtomexHelpers } 
 import Web3 from 'web3';
 import type { Account as Web3Account } from 'web3-core';
 
-import type { AtomexAuthMessage, AtomexAuthTokenRequest, AtomexAuthTokenResponse } from './atomexTypes';
+import type { AtomexAddOrderRequest, AtomexAuthMessage, AtomexAuthTokenRequest, AtomexAuthTokenResponse } from './atomexTypes';
 import type { User } from './user';
 
 export type AtomexBlockchainName = 'tez' | 'eth';
@@ -123,6 +123,24 @@ export class AtomexClient {
       default:
         throw new Error(`Unknown blockchain: ${this.blockchainName}`);
     }
+  }
+
+  async createOrder(orderData: Omit<AtomexAddOrderRequest, 'requisites' | 'proofsOfFunds'>) {
+    const currencies = orderData.symbol.split('/') as unknown as readonly [string, string];
+    const targetCurrency = orderData.side === 'Sell' ? currencies[0] : currencies[1];
+
+    const addOrderRequest: AtomexAddOrderRequest = {
+      ...orderData,
+      proofsOfFunds: this.atomexAuthentication
+        ? [{
+          ...this.atomexAuthentication.request,
+          address: this.userAddress,
+          currency: targetCurrency,
+        }]
+        : []
+    };
+
+    return this.atomex.addOrder(addOrderRequest);
   }
 
   private async initializeTezosToolkit() {
