@@ -40,8 +40,13 @@ It's a playground for [atomex-sdk](https://github.com/atomex-protocol/atomex-sdk
     Available commands:
      * h, help              Help
      * exit                 Exiting the program
-     * fetchOrderBook       Fetch order book and print it. Arguments: symbol
+     * getOrderBook         Get order book and print it. Arguments: symbol
+     * getOrders            Get user orders. Arguments: userId, blockchainName (tez | eth)
+     * getOrder             Get a user order. Arguments: userId, blockchainName (tez | eth), orderId
+     * createOrder          Create order. Arguments: userId, blockchainName (tez | eth), symbol, price, qty, side (Buy, Sell), orderType (Return | FillOrKill | SolidFillOrKill | ImmediateOrCancel)
+     * cancelOrder          Cancel a user order. Arguments: userId, blockchainName (tez | eth), orderId
      * printUsers           Print a list of the current users
-     * auth, authenticate   Authenticate a user. Arguments: userId, authenticationMethod (Tez | Eth | All)
+     * printAtomexClients   Print a list of the atomex clients
+     * auth, authenticate   Authenticate a user. Arguments: userId, blockchainName (tez | eth)
     
     ```
