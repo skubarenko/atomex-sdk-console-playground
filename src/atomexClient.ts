@@ -1,8 +1,10 @@
 import { InMemorySigner } from '@taquito/signer';
 import { TezosToolkit } from '@taquito/taquito';
-import { Atomex, TezosHelpers, type Helpers as AtomexHelpers } from 'atomex-sdk';
+import { Atomex, EthereumHelpers, TezosHelpers, type Helpers as AtomexHelpers } from 'atomex-sdk';
+import Web3 from 'web3';
+import type { Account as Web3Account } from 'web3-core';
 
-import type { AtomexAuthTokenRequest, AtomexAuthTokenResponse, AtomexOrder } from './atomexTypes';
+import type { AtomexAuthMessage, AtomexAuthTokenRequest, AtomexAuthTokenResponse } from './atomexTypes';
 import type { User } from './user';
 
 export type AtomexBlockchainName = 'tez' | 'eth';
@@ -21,8 +23,7 @@ const authenticationMessage = 'Signing in ';
 export class AtomexClient {
   static readonly DefaultRpcUrls: AtomexClientRpcUrls = {
     tez: 'https://rpc.tzkt.io/hangzhounet',
-    // TODO
-    eth: ''
+    eth: 'https://ropsten.infura.io/v3/7cd728d2d3384719a630d836f1693c5c'
   };
 
   readonly id: string;
@@ -30,6 +31,8 @@ export class AtomexClient {
 
   private _tezosToolkit: TezosToolkit | undefined;
   private _tezosInMemorySigner: InMemorySigner | undefined;
+  private _ethereumToolkit: Web3 | undefined;
+  private _ethereumAccount: Web3Account | undefined;
   private _userPublicKey: string | undefined;
   private _userAddress: string | undefined;
   private _atomexHelpers: AtomexHelpers | undefined;
@@ -86,6 +89,20 @@ export class AtomexClient {
     return this._tezosInMemorySigner;
   }
 
+  private get ethereumToolkit() {
+    if (!this._ethereumToolkit)
+      throw AtomexClient.getAnotherBlockchainError(this.blockchainName, 'eth');
+
+    return this._ethereumToolkit;
+  }
+
+  private get ethereumAccount() {
+    if (!this._ethereumAccount)
+      throw AtomexClient.getAnotherBlockchainError(this.blockchainName, 'eth');
+
+    return this._ethereumAccount;
+  }
+
   async initialize() {
     switch (this.blockchainName) {
       case 'tez':
@@ -125,10 +142,15 @@ export class AtomexClient {
   }
 
   private async initializeEthereumToolkit() {
-    // TODO
-    this._userPublicKey = 'dummy';
-    this._userAddress = 'dummy';
-    this._atomexHelpers = undefined;
+    this._ethereumToolkit = new Web3(this.rpcUrl);
+    this._ethereumAccount = this._ethereumToolkit.eth.accounts.privateKeyToAccount(this.user.secretKeys.eth);
+
+    this._userAddress = this.ethereumAccount.address;
+    this._atomexHelpers = await EthereumHelpers.create(this.network);
+
+    const dummyMessage = 'dummy';
+    const dummySignature = this._ethereumAccount.sign(dummyMessage);
+    this._userPublicKey = (this._atomexHelpers as EthereumHelpers).recoverPublicKey(dummyMessage, dummySignature.signature);
   }
 
   private async authenticateTezos() {
@@ -136,13 +158,24 @@ export class AtomexClient {
     const bytes = Buffer.from(message.msgToSign, 'utf8').toString('hex');
     const signature = await this.tezosInMemorySigner.sign(bytes);
 
-    const encodedSignature = this.atomexHelpers.encodeSignature(signature.prefixSig);
+    return this.authenticateInternal(message, signature.prefixSig);
+  }
+
+  private async authenticateEthereum() {
+    const message = this.atomexHelpers.getAuthMessage(authenticationMessage);
+    const signature = this.ethereumAccount.sign(message.msgToSign);
+
+    return this.authenticateInternal(message, signature.signature);
+  }
+
+  private async authenticateInternal(authMessage: AtomexAuthMessage, signature: string) {
+    const encodedSignature = this.atomexHelpers.encodeSignature(signature);
     const encodedPublicKey = this.atomexHelpers.encodePublicKey(this.userPublicKey);
 
     const authRequest: AtomexAuthTokenRequest = {
-      timeStamp: message.timestamp,
-      message: message.message,
-      algorithm: message.algorithm,
+      timeStamp: authMessage.timestamp,
+      message: authMessage.message,
+      algorithm: authMessage.algorithm,
 
       publicKey: encodedPublicKey,
       signature: encodedSignature
@@ -153,10 +186,6 @@ export class AtomexClient {
       response: await this.atomex.getAuthToken(authRequest)
     };
     this.atomex.setAuthToken(this._atomexAuthentication.response.token);
-  }
-
-  private async authenticateEthereum() {
-    throw new Error('Not implemented');
   }
 
   private ensureUserHasRequiredSecretKey(user: User, blockchainName: AtomexBlockchainName) {
