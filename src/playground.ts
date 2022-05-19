@@ -120,15 +120,22 @@ export class Playground {
     return this.atomexClients.get(`${userId}_${blockchainName}`);
   }
 
-  private authenticateUserCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private withClient(command: (client: AtomexClient, ...args: any[]) => (void | Promise<void>)) {
+    return (userId: User['id'], blockchainName: AtomexBlockchainName, ...args: unknown[]) => {
+      const client = this.getClient(userId, blockchainName);
+      if (!client)
+        return Playground.printClientNotFoundError(userId);
 
+      return command.call(this, client, ...args);
+    };
+  }
+
+  private authenticateUserCommandHandler = this.withClient(async (client: AtomexClient) => {
     await client.authenticate();
     console.log(`The ${client.user.name} [${client.user.id}] user is authenticated`);
     console.log('AuthData', client.atomexAuthentication);
-  };
+  });
 
   private getOrderBookCommandHandler = async (symbol: string) => {
     const orderBook = await this.anonymousAtomex.getOrderBook(symbol);
@@ -136,37 +143,24 @@ export class Playground {
     printOrderBook(orderBook);
   };
 
-  private getOrdersCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
+  private getOrdersCommandHandler = this.withClient(async (client: AtomexClient) => {
     const orders = await client.atomex.getOrders();
     console.table(orders);
-  };
+  });
 
-  private getOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
+  private getOrderCommandHandler = this.withClient(async (client: AtomexClient, orderId: string) => {
     const order = await client.atomex.getOrder(orderId);
     console.log(order);
-  };
+  });
 
-  private createOrderCommandHandler = async (
-    userId: User['id'],
-    blockchainName: AtomexBlockchainName,
+  private createOrderCommandHandler = this.withClient(async (
+    client: AtomexClient,
     symbol: string,
     price: string,
     qty: string,
     side: AtomexOrder['side'],
     type: AtomexOrder['type']
   ) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
     const orderId = await client.createOrder({
       clientOrderId: `${client.id}_${nanoid(7)}`,
       symbol,
@@ -177,35 +171,23 @@ export class Playground {
     });
 
     console.log(`Order ID = ${orderId}`);
-  };
+  });
 
-  private cancelOrderCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, orderId: string) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
+  private cancelOrderCommandHandler = this.withClient(async (client: AtomexClient, orderId: string) => {
     const order = await client.atomex.getOrder(orderId);
     const result = await client.atomex.cancelOrder(orderId, order.symbol, order.side);
     console.log(`Result: Is the ${orderId} order canceled? ${result}`);
-  };
+  });
 
-  private getSwapCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, swapId: string) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
-    const swap = await client.atomex.getSwap(swapId);
-    console.log(swap);
-  };
-
-  private getSwapsCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
-    const client = this.getClient(userId, blockchainName);
-    if (!client)
-      return Playground.printClientNotFoundError(userId);
-
+  private getSwapsCommandHandler = this.withClient(async (client: AtomexClient) => {
     const swaps = await client.atomex.getSwaps();
     console.table(swaps, ['id', 'symbol', 'side', 'timeStamp', 'isInitiator', 'price', 'qty', 'secret', 'secretHash']);
-  };
+  });
+
+  private getSwapCommandHandler = this.withClient(async (client: AtomexClient, swapId: string) => {
+    const swap = await client.atomex.getSwap(swapId);
+    console.log(swap);
+  });
 
   private printUsersCommandHandler = () => {
     console.log(this.users);
