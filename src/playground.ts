@@ -31,6 +31,8 @@ export class Playground {
       [['createOrder'], this.createOrderCommandHandler, 'Create order. ' +
         'Arguments: userId, blockchainName (tez | eth), symbol, price, qty, side (Buy, Sell), orderType (Return | FillOrKill | SolidFillOrKill | ImmediateOrCancel)'],
       [['cancelOrder'], this.cancelOrderCommandHandler, 'Cancel a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
+      [['getSwaps'], this.getSwapsCommandHandler, 'Get user available swaps. Arguments: userId, blockchainName (tez | eth)'],
+      [['getSwap'], this.getSwapCommandHandler, 'Get a user swap. Arguments: userId, blockchainName (tez | eth), swapId'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
       [['printAtomexClients'], this.printAtomexClientsCommandHandler, 'Print a list of the atomex clients'],
       [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, blockchainName (tez | eth)']
@@ -185,6 +187,24 @@ export class Playground {
     const order = await client.atomex.getOrder(orderId);
     const result = await client.atomex.cancelOrder(orderId, order.symbol, order.side);
     console.log(`Result: Is the ${orderId} order canceled? ${result}`);
+  };
+
+  private getSwapCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName, swapId: string) => {
+    const client = this.getClient(userId, blockchainName);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const swap = await client.atomex.getSwap(swapId);
+    console.log(swap);
+  };
+
+  private getSwapsCommandHandler = async (userId: User['id'], blockchainName: AtomexBlockchainName) => {
+    const client = this.getClient(userId, blockchainName);
+    if (!client)
+      return Playground.printClientNotFoundError(userId);
+
+    const swaps = await client.atomex.getSwaps();
+    console.table(swaps, ['id', 'symbol', 'side', 'timeStamp', 'isInitiator', 'price', 'qty', 'secret', 'secretHash']);
   };
 
   private printUsersCommandHandler = () => {
