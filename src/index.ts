@@ -24,4 +24,4 @@ const users = new Map<User['id'], User>(userIds.map(userId => {
 }));
 
 const playground = new Playground(network, users);
-playground.launch();
+await playground.launch();

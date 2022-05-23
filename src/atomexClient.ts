@@ -1,11 +1,13 @@
 import { InMemorySigner } from '@taquito/signer';
 import { TezosToolkit } from '@taquito/taquito';
 import { Atomex, EthereumHelpers, TezosHelpers, type Helpers as AtomexHelpers } from 'atomex-sdk';
+import { nanoid } from 'nanoid';
 import Web3 from 'web3';
 import type { Account as Web3Account } from 'web3-core';
 
 import type { AtomexAddOrderRequest, AtomexAuthMessage, AtomexAuthTokenRequest, AtomexAuthTokenResponse } from './atomexTypes';
 import type { User } from './user';
+import { sha256 } from './utils/index.js';
 
 export type AtomexBlockchainName = 'tez' | 'eth';
 
@@ -22,7 +24,7 @@ const authenticationMessage = 'Signing in ';
 
 export class AtomexClient {
   static readonly DefaultRpcUrls: AtomexClientRpcUrls = {
-    tez: 'https://rpc.tzkt.io/hangzhounet',
+    tez: 'https://rpc.tzkt.io/hangzhou2net',
     eth: 'https://ropsten.infura.io/v3/7cd728d2d3384719a630d836f1693c5c'
   };
 
@@ -125,7 +127,7 @@ export class AtomexClient {
     }
   }
 
-  async createOrder(orderData: Omit<AtomexAddOrderRequest, 'requisites' | 'proofsOfFunds'>) {
+  async createOrder(orderData: Omit<AtomexAddOrderRequest, 'proofsOfFunds'>) {
     const currencies = orderData.symbol.split('/') as unknown as readonly [string, string];
     const targetCurrency = orderData.side === 'Sell' ? currencies[0] : currencies[1];
 
@@ -141,6 +143,38 @@ export class AtomexClient {
     };
 
     return this.atomex.addOrder(addOrderRequest);
+  }
+
+  async initiateSwap(swapId: string, rawRewardForRedeem?: string, rawExpirationMinutes?: string, secret: string = nanoid(27)) {
+    const swap = await this.atomex.getSwap(swapId);
+    const rewardForRedeem = !rawRewardForRedeem ? 0 : (Number.parseFloat(rawRewardForRedeem) || 0);
+    const refundTimestamp = Date.parse(swap.timeStamp) + Math.floor(((rawExpirationMinutes && Number.parseFloat(rawExpirationMinutes)) || 60) * 60000);
+    const secretHash = sha256(sha256(secret));
+    const receivingAddress = swap.counterParty.requisites.receivingAddress;
+
+    const initiateTransactionParameters = this.atomexHelpers.buildInitiateTransaction({
+      netAmount: swap.qty,
+      receivingAddress,
+      rewardForRedeem,
+      refundTimestamp,
+      secretHash
+    });
+
+    const vaultContract = await this.tezosToolkit.contract.at(initiateTransactionParameters.contractAddr);
+    const initiateContractMethod = vaultContract.methodsObject[initiateTransactionParameters.data.entrypoint];
+    if (!initiateContractMethod)
+      throw new Error(`Tne ${initiateTransactionParameters.data.entrypoint} entrypoint does not exist`);
+
+    const initiateTransaction = await initiateContractMethod({
+      participant: receivingAddress,
+      settings: {
+        hashed_secret: secretHash,
+        refund_time: refundTimestamp.toString(),
+        payoff: rewardForRedeem
+      }
+    }).send({ amount: initiateTransactionParameters.amount });
+
+    return initiateTransaction;
   }
 
   private async initializeTezosToolkit() {

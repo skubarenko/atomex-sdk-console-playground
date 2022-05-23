@@ -33,6 +33,7 @@ export class Playground {
       [['cancelOrder'], this.cancelOrderCommandHandler, 'Cancel a user order. Arguments: userId, blockchainName (tez | eth), orderId'],
       [['getSwaps'], this.getSwapsCommandHandler, 'Get user available swaps. Arguments: userId, blockchainName (tez | eth)'],
       [['getSwap'], this.getSwapCommandHandler, 'Get a user swap. Arguments: userId, blockchainName (tez | eth), swapId'],
+      [['initiateSwap'], this.initiateSwapCommandHandler, 'Initiate a swap. Arguments: userId, blockchainName (tez | eth), swapId, [rewardForRedeem], [expirationMinutes], [secret]'],
       [['printUsers'], this.printUsersCommandHandler, 'Print a list of the current users'],
       [['printAtomexClients'], this.printAtomexClientsCommandHandler, 'Print a list of the atomex clients'],
       [['auth', 'authenticate'], this.authenticateUserCommandHandler, 'Authenticate a user. Arguments: userId, blockchainName (tez | eth)']
@@ -150,7 +151,7 @@ export class Playground {
 
   private getOrderCommandHandler = this.withClient(async (client: AtomexClient, orderId: string) => {
     const order = await client.atomex.getOrder(orderId);
-    console.log(order);
+    console.dir(order, { depth: null });
   });
 
   private createOrderCommandHandler = this.withClient(async (
@@ -159,15 +160,23 @@ export class Playground {
     price: string,
     qty: string,
     side: AtomexOrder['side'],
-    type: AtomexOrder['type']
+    type: AtomexOrder['type'],
+    receivingAddress: string,
+    rewardForRedeem?: string,
+    lockTime?: string,
   ) => {
     const orderId = await client.createOrder({
       clientOrderId: `${client.id}_${nanoid(7)}`,
       symbol,
-      price: +price,
-      qty: +qty,
+      price: Number.parseFloat(price),
+      qty: Number.parseFloat(qty),
       side,
       type,
+      requisites: {
+        receivingAddress,
+        rewardForRedeem: rewardForRedeem && Number.parseFloat(rewardForRedeem) || 0,
+        lockTime: lockTime && Number.parseInt(lockTime) || 17000
+      }
     });
 
     console.log(`Order ID = ${orderId}`);
@@ -186,7 +195,19 @@ export class Playground {
 
   private getSwapCommandHandler = this.withClient(async (client: AtomexClient, swapId: string) => {
     const swap = await client.atomex.getSwap(swapId);
-    console.log(swap);
+    console.dir(swap, { depth: null });
+  });
+
+  private initiateSwapCommandHandler = this.withClient(async (
+    client: AtomexClient,
+    swapId: string,
+    rewardForRedeem?: string,
+    expirationMinutes?: string,
+    secret?: string
+  ) => {
+    const initiateTransaction = await client.initiateSwap(swapId, rewardForRedeem, expirationMinutes, secret);
+
+    console.log(`Initiate Transaction Hash = ${initiateTransaction.hash}`);
   });
 
   private printUsersCommandHandler = () => {
